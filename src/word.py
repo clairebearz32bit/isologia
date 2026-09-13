@@ -1,4 +1,7 @@
+import re
+import json
 import requests
+import networkx as nx
 
 
 class Word:
@@ -6,13 +9,42 @@ class Word:
         URL = "https://en.wiktionary.org/w/api.php?action=parse&page={}&prop=wikitext&format=json&origin=*"
         headers = {"User-Agent": "Isologia/0.0 (https://github.com/clairebearz32bit/isologia)"}
 
-        response = requests.get(URL.format(word), headers=headers).json()
+        self.word = word
+        self.response = requests.get(URL.format(self.word), headers=headers).json()
 
-        if "===Etymology===" not in response:
+    """
+    Parse the JSON response and dump it into a file by default. Prepares the etymology to be put into a directed multigraph with networkx.
+    """
+
+    def get_response(self, dump_json=True):
+        response = self.response["parse"]["wikitext"]["*"]
+
+        if "===Etymology===" not in response or "==English==" not in response:
             # Maybe add another source here as a fallback?
-            raise Exception("This word does not have an etymology section on Wiktionary.")
+            # Can maybe add support for other languages later
+            raise Exception("This word does not have an English etymology section on Wiktionary.")
 
-        self.etymology = response
-        print(self.etymology)
+        match = re.search(
+            r"^==English==\s*\n.*?"
+            r"^===Etymology===\s*\n"
+            r"(?P<etymology>.*?)"
+            r"(?=^={3,6}[^=\n].*?={3,6}\s*$|^==[^=\n].*?==\s*$|\Z)",
+            response,
+            flags=re.MULTILINE | re.DOTALL,
+        )
+
+        t = str.translate("{}", "\n", )
+        etymology_text = match.group("etymology").strip().translate(t) if match else None
+
+        if dump_json:
+            filepath = "./{}_ETYMOLOGY.json".format(self.word)
+            with open(filepath, "w+") as fp:
+                json.dump(etymology_text, fp, indent=4)
+
+        return etymology_text
 
     def parse_response(self):
+        pass
+
+    def create_graph(self):
+        G = nx.MultiDiGraph()
